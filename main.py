@@ -1,14 +1,27 @@
 import click
 import numpy as np
 import matplotlib.pyplot as plt
+from numpy import ndarray
 from scipy.spatial import Voronoi, Delaunay, voronoi_plot_2d
 from dataclasses import dataclass
-from typing import Set
+from typing import Set, Tuple, Any
 
 from shapely import Point, LineString
 from shapely.geometry import Polygon
+from tqdm import tqdm
+
+from lib import generate_numbers, axes_setup, lloyds_relaxation
+
+# Size of world
+SQUARE_SIZE = 10
+
+# Define the number of points to generate
+NUM_POINTS = 100
 
 
+### Custom Classes ###
+
+# Center: The center of a region
 class Center:
     def __init__(self):
         self.neighbors: Set[Polygon] = ()
@@ -16,6 +29,7 @@ class Center:
         self.corners: Set[Corner] = ()
 
 
+# Corner: corner of region
 class Corner:
     def __init__(self):
         self.touches: Set[Polygon] = ()
@@ -23,6 +37,7 @@ class Corner:
         self.adjacent: Set[Corner] = ()
 
 
+# Edge: connecting edge between two regions
 class Edge:
     def __init__(self, d0, d1, v0, v1):
         self.d0 = d0
@@ -31,161 +46,102 @@ class Edge:
         self.v1 = v1
 
 
-def generate_world():
-    # Define the size of the square
-    square_size = 10
+# Size of world
+SQUARE_SIZE = 10
 
-    # Define the number of points to generate
-    num_points = 100
+# Define the number of points to generate
+NUM_POINTS = 100
 
-    # Define the number of relaxation iterations
-    num_iterations = 10
 
-    # Generate random points in the square
-    points = np.random.rand(num_points, 2) * square_size
-
-    # Generate random colors for each point
-    colors = np.random.rand(num_points, 3)
-
-    # Create subplots with 1 row and 2 columns
-    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
-
-    # Plot Voronoi diagram before relaxation
-    ax1.set_xlim([0, square_size])
-    ax1.set_ylim([0, square_size])
-    ax1.set_title("Voronoi Diagram Before Relaxation")
-    ax1.set_xlabel("X")
-    ax1.set_ylabel("Y")
-
-    vor = Voronoi(points)
-    for region in vor.regions:
-        if len(region) > 0 and -1 not in region:
-            ax1.fill(vor.vertices[region, 0], vor.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
-    for i in range(num_points):
-        ax1.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
-
-    # Perform Lloyd's relaxation algorithm
-    for i in range(num_iterations):
-        vor = Voronoi(points)
-        for idx, region in enumerate(vor.regions):
-            if len(region) > 0 and -1 not in region:
-                if idx < num_points:
-                    points[idx] = np.mean(vor.vertices[region], axis=0)
-
-    # Plot Voronoi diagram after relaxation
-    ax2.set_xlim([0, square_size])
-    ax2.set_ylim([0, square_size])
-    ax2.set_title("Voronoi Diagram After Relaxation")
-    ax2.set_xlabel("X")
-    ax2.set_ylabel("Y")
-
-    for region in vor.regions:
-        if len(region) > 0 and -1 not in region:
-            ax2.fill(vor.vertices[region, 0], vor.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
-    for i in range(num_points):
-        ax2.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
-
-    # Show the plots
-    plt.show()
 def delaney():
-    # Define the size of the square
-    square_size = 10
 
-    # Define the number of points to generate
-    num_points = 100
-
-    # Define the number of relaxation iterations
-    num_iterations = 10
-
+    print("Generating points")
     # Generate random points in the square
-    points = np.random.rand(num_points, 2) * square_size
+    points: ndarray = generate_numbers(NUM_POINTS, 2, SQUARE_SIZE)
 
+    print("Generating colors")
     # Generate random colors for each point
-    colors = np.random.rand(num_points, 3)
-
-    plt.figure(1)
+    colors: ndarray = generate_numbers(NUM_POINTS, 3)
+    bounding_box = np.array([0., SQUARE_SIZE, 0., SQUARE_SIZE])
+    print("Creating plots")
     # Create a figure with 3 subplots
-    pltp = plt.subplots(2, 2, figsize=(10, 10), squeeze="true")
+    pltp: tuple[plt.figure, tuple[tuple[plt.axes, plt.axes]]] = plt.subplots(2, 2, figsize=(10, 10), squeeze="true")
 
-    fig, (topax, botax) = pltp
+    fig1: plt.figure
+    topax: tuple[plt.axes, plt.axes]
+    botax: tuple[plt.axes, plt.axes]
+    ax1: plt.axes
+    ax2: plt.axes
+    ax3: plt.axes
+    ax4: plt.axes
+    fig1, (topax, botax) = pltp
     (ax1, ax2) = topax
     (ax3, ax4) = botax
 
+    axes_setup(ax1, "Initial Voronoi Diagram", SQUARE_SIZE)
+    axes_setup(ax2, "Voronoi Diagram After Lloyd's Relaxation", SQUARE_SIZE)
+    axes_setup(ax3, "Delaunay Triangulation After Lloyd's Relaxation", SQUARE_SIZE)
+    axes_setup(ax4, "Delaunay Triangulation and Voronoi Diagram", SQUARE_SIZE)
+
+    print("Plot initial Voronoi diagram")
     # Plot the initial Voronoi diagram
     vor1 = Voronoi(points)
 
     for region in vor1.regions:
         if len(region) > 0 and -1 not in region:
             ax1.fill(vor1.vertices[region, 0], vor1.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
-    for i in range(num_points):
+    for i in range(NUM_POINTS):
         ax1.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
 
-    ax1.set_xlim([0, square_size])
-    ax1.set_ylim([0, square_size])
-    ax1.set_title("Initial Voronoi Diagram")
-    ax1.set_xlabel("X")
-    ax1.set_ylabel("Y")
+    print("Running Lloyd's Relaxation 2 iterations")
+    points = lloyds_relaxation(points)
 
-    # Perform Lloyd's relaxation algorithm
-    for i in range(num_iterations):
-        vor2 = Voronoi(points)
-        for idx, region in enumerate(vor2.regions):
-            if len(region) > 0 and -1 not in region:
-                if idx < num_points:
-                    points[idx] = np.mean(vor2.vertices[region], axis=0)
-
+    print("Plot new Voronoi diagram")
     # Plot the Voronoi diagram after Lloyd's relaxation
     vor2 = Voronoi(points)
 
     for region in vor2.regions:
         if len(region) > 0 and -1 not in region:
             ax2.fill(vor2.vertices[region, 0], vor2.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
-    for i in range(num_points):
+    for i in range(NUM_POINTS):
         ax2.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
-    ax2.set_xlim([0, square_size])
-    ax2.set_ylim([0, square_size])
-    ax2.set_title("Voronoi Diagram After Lloyd's Relaxation")
-    ax2.set_xlabel("X")
-    ax2.set_ylabel("Y")
 
+    print("Plot Delaunay triangulation")
     # Create a Delaunay triangulation
     tri = Delaunay(points)
 
     # Plot the Delaunay triangulation after Lloyd's relaxation
     ax3.triplot(points[:, 0], points[:, 1], tri.simplices, color='b', linewidth=0.5)
     ax3.plot(points[:, 0], points[:, 1], 'o', color='r')
-    ax3.set_xlim([0, square_size])
-    ax3.set_ylim([0, square_size])
-    ax3.set_title("Delaunay Triangulation After Lloyd's Relaxation")
-    ax3.set_xlabel("X")
-    ax3.set_ylabel("Y")
 
+    print("Plot overlay of Delaunay triangulation and Voronoi diagram")
     for region in vor2.regions:
         if len(region) > 0 and -1 not in region:
             ax4.fill(vor2.vertices[region, 0], vor2.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
 
     ax4.triplot(points[:, 0], points[:, 1], tri.simplices, color='b', linewidth=0.5)
-    for i in range(num_points):
+    for i in range(NUM_POINTS):
         ax4.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
-    ax4.set_xlim([0, square_size])
-    ax4.set_ylim([0, square_size])
-    ax4.set_title("Delaunay Triangulation After Lloyd's Relaxation")
-    ax4.set_xlabel("X")
-    ax4.set_ylabel("Y")
 
+    print("Save the figure of all 4 plots")
     # Save the figure
-    plt.savefig('plot.png')
-    # Display the figure
+    fig1.savefig('images/plot.png', bbox_inches='tight', pad_inches=0.1)
+
+    print("Setup second figure and plots")
+    fig2 = plt.figure()
+    ax5 = fig2.add_subplot(111)
+    axes_setup(ax5, "Voronoi Diagram with Polygon Shapes", SQUARE_SIZE)
 
 
+    print("Generate polygons")
     polygons = []
-    for region_idx in vor2.regions:
+    for region_idx in tqdm(vor2.regions):
         if len(region_idx) > 0 and -1 not in region_idx:
             # Check if region is valid (not empty and doesn't contain -1 index)
             # Extract vertices for the region
             region_vertices = vor2.vertices[region_idx]
             # Create a Shapely polygon from the vertices if it has at least 4 vertices
-            if len(region_vertices) >= 4:
+            if len(region_vertices) >= 3:
                 polygon = Polygon(region_vertices)
                 polygons.append(polygon)
             else:
@@ -209,22 +165,13 @@ def delaney():
                     polygon = Polygon(region_points)
                     polygons.append(polygon)
 
-        #voronoi_plot_2d(vor2, ax show_vertices=False, show_points=False, line_colors='red')
+
+        voronoi_plot_2d(vor2, ax5, show_vertices=False, show_points=False, line_colors='red')
+        plt.show()
         # Plot the polygons
         for polygon in polygons:
-            plt.plot(*polygon.exterior.xy, c='blue', lw=2, alpha=0.5)
-
-        # Set plot limits
-        plt.xlim(np.min(points[:, 0]) - 1, np.max(points[:, 0]) + 1)
-        plt.ylim(np.min(points[:, 1]) - 1, np.max(points[:, 1]) + 1)
-
-        # Add labels and title
-        plt.xlabel('X axis')
-        plt.ylabel('Y axis')
-        plt.title('Voronoi Diagram with Polygon Shapes')
-        plt.savefig('delaunay.png')
-        # Show the plot
-        plt.show()
+            ax5.plot(*polygon.exterior.xy, c='blue', lw=2, alpha=0.5)
+        fig2.savefig('images/polygons.png', bbox_inches='tight', pad_inches=0.1)
 
 
 @click.command()
@@ -233,8 +180,5 @@ def run():
     delaney()
 
 
-
 if __name__ == '__main__':
     run()
-
-

@@ -4,11 +4,15 @@ from shapely.geometry import Polygon as ShapelyPolygon
 import matplotlib.pyplot as plt
 import numpy as np
 
+from lib import lloyds_relaxation
+
 # Generate random points
 points = np.random.rand(100, 2) * 10
 
 # Compute Voronoi diagram
 vor = Voronoi(points)
+
+#points = lloyds_relaxation(points)
 
 # Extract polygons for Voronoi regions
 polygons = []
@@ -58,5 +62,4 @@ plt.xlabel('X axis')
 plt.ylabel('Y axis')
 plt.title('Voronoi Diagram with Polygon Shapes')
 
-# Show the plot
-plt.show()
+plt.savefig('voronoi_polygons.png')  # Change the file format and name as desired
