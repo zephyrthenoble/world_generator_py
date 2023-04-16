@@ -1,12 +1,16 @@
+from typing import List, Any
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial import Voronoi
 
 
-def generate_numbers(num_points: int, dimension: int, scale: float = 1.0) -> np.ndarray:
+def generate_numbers(num_points: int, dimension: int, scale: float = 1.0, seed=None) -> np.ndarray:
     """
     Generates random ND points within a square of a given size.
     """
+    if seed:
+        np.random.seed(seed)
     points = np.random.rand(num_points, dimension) * scale
     return points
 
@@ -44,30 +48,89 @@ def axes_setup(ax: plt.Axes, title: str, scale: float):
     ax.set_title(title)
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
-
-def in_box(towers, bounding_box):
-    return np.logical_and(np.logical_and(bounding_box[0] <= towers[:, 0],
-                                         towers[:, 0] <= bounding_box[1]),
-                          np.logical_and(bounding_box[2] <= towers[:, 1],
-                                         towers[:, 1] <= bounding_box[3]))
+    ax.set_aspect('equal', 'box')
 
 
-def voronoi(points, bounding_box):
-    points_center = points
-    points_left = np.copy(points_center)
-    points_left[:, 0] = bounding_box[0] - (points_left[:, 0] - bounding_box[0])
-    points_right = np.copy(points_center)
-    points_right[:, 0] = bounding_box[1] + (bounding_box[1] - points_right[:, 0])
-    points_down = np.copy(points_center)
-    points_down[:, 1] = bounding_box[2] - (points_down[:, 1] - bounding_box[2])
-    points_up = np.copy(points_center)
-    points_up[:, 1] = bounding_box[3] + (bounding_box[3] - points_up[:, 1])
-    points = np.append(points_center,
-                       np.append(np.append(points_left,
-                                           points_right,
-                                           axis=0),
-                                 np.append(points_down,
-                                           points_up,
-                                           axis=0),
-                                 axis=0),
-                       axis=0)
+def voronoi_finite_polygons_2d(vor, radius=None):
+    """
+    Reconstruct infinite voronoi regions in a 2D diagram to finite
+    regions.
+
+    Parameters
+    ----------
+    vor : Voronoi
+        Input diagram
+    radius : float, optional
+        Distance to 'points at infinity'.
+
+    Returns
+    -------
+    regions : list of tuples
+        Indices of vertices in each revised Voronoi regions.
+    vertices : list of tuples
+        Coordinates for revised Voronoi vertices. Same as coordinates
+        of input vertices, with 'points at infinity' appended to the
+        end.
+
+    Ref: https://stackoverflow.com/a/20678647
+    """
+
+    if vor.points.shape[1] != 2:
+        raise ValueError("Requires 2D input")
+
+    new_regions: list[list[int]] = []
+    new_vertices = vor.vertices.tolist()
+
+    center = vor.points.mean(axis=0)
+    if radius is None:
+        radius = vor.points.ptp().max()
+
+    # Construct a map containing all ridges for a given point
+    all_ridges = {}
+    for (p1, p2), (v1, v2) in zip(vor.ridge_points, vor.ridge_vertices):
+        all_ridges.setdefault(p1, []).append((p2, v1, v2))
+        all_ridges.setdefault(p2, []).append((p1, v1, v2))
+
+    # Reconstruct infinite regions
+    for p1, region in enumerate(vor.point_region):
+        vertices = vor.regions[region]
+
+        if all(v >= 0 for v in vertices):
+            # finite region
+            new_regions.append(vertices)
+            continue
+
+        # reconstruct a non-finite region
+        ridges = all_ridges[p1]
+        new_region = [v for v in vertices if v >= 0]
+
+        for p2, v1, v2 in ridges:
+            if v2 < 0:
+                v1, v2 = v2, v1
+            if v1 >= 0:
+                # finite ridge: already in the region
+                continue
+
+            # Compute the missing endpoint of an infinite ridge
+
+            t = vor.points[p2] - vor.points[p1] # tangent
+            t /= np.linalg.norm(t)
+            n = np.array([-t[1], t[0]])  # normal
+
+            midpoint = vor.points[[p1, p2]].mean(axis=0)
+            direction = np.sign(np.dot(midpoint - center, n)) * n
+            far_point = vor.vertices[v2] + direction * radius
+
+            new_region.append(len(new_vertices))
+            new_vertices.append(far_point.tolist())
+
+        # sort region counterclockwise
+        vs = np.asarray([new_vertices[v] for v in new_region])
+        c = vs.mean(axis=0)
+        angles = np.arctan2(vs[:,1] - c[1], vs[:,0] - c[0])
+        new_region = np.array(new_region)[np.argsort(angles)]
+
+        # finish
+        new_regions.append(new_region.tolist())
+
+    return new_regions, np.asarray(new_vertices)

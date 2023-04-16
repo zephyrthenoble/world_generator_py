@@ -1,16 +1,18 @@
 import click
 import numpy as np
 import matplotlib.pyplot as plt
+import shapely.geometry
+from matplotlib import patches
 from numpy import ndarray
 from scipy.spatial import Voronoi, Delaunay, voronoi_plot_2d
 from dataclasses import dataclass
 from typing import Set, Tuple, Any
 
-from shapely import Point, LineString
+from shapely import Point, LineString, normalize
 from shapely.geometry import Polygon
 from tqdm import tqdm
 
-from lib import generate_numbers, axes_setup, lloyds_relaxation
+from lib import generate_numbers, axes_setup, lloyds_relaxation, voronoi_finite_polygons_2d
 
 # Size of world
 SQUARE_SIZE = 10
@@ -24,17 +26,17 @@ NUM_POINTS = 100
 # Center: The center of a region
 class Center:
     def __init__(self):
-        self.neighbors: Set[Polygon] = ()
-        self.borders: Set[Edge] = ()
-        self.corners: Set[Corner] = ()
+        self.neighbors: Set[Polygon] = set()
+        self.borders: Set[Edge] = set()
+        self.corners: Set[Corner] = set()
 
 
 # Corner: corner of region
 class Corner:
     def __init__(self):
-        self.touches: Set[Polygon] = ()
-        self.protrudes: Set[Edge] = ()
-        self.adjacent: Set[Corner] = ()
+        self.touches: Set[Polygon] = set()
+        self.protrudes: Set[Edge] = set()
+        self.adjacent: Set[Corner] = set()
 
 
 # Edge: connecting edge between two regions
@@ -52,9 +54,13 @@ SQUARE_SIZE = 10
 # Define the number of points to generate
 NUM_POINTS = 100
 
+polygons = set()
+centers = set()
+corners = set()
+edges = set()
+
 
 def delaney():
-
     print("Generating points")
     # Generate random points in the square
     points: ndarray = generate_numbers(NUM_POINTS, 2, SQUARE_SIZE)
@@ -128,50 +134,60 @@ def delaney():
     fig1.savefig('images/plot.png', bbox_inches='tight', pad_inches=0.1)
 
     print("Setup second figure and plots")
-    fig2 = plt.figure()
-    ax5 = fig2.add_subplot(111)
-    axes_setup(ax5, "Voronoi Diagram with Polygon Shapes", SQUARE_SIZE)
+    fig2, (ax5, ax6) = plt.subplots(1, 2, figsize=(10, 10), squeeze="true")
 
+    axes_setup(ax5, "Voronoi Diagram with Polygon Shapes", SQUARE_SIZE)
+    axes_setup(ax5, "Polygon Shapes full view", SQUARE_SIZE)
+
+    print("Making infinite voronoi regions finite")
+    regions, vertices = voronoi_finite_polygons_2d(vor2)
 
     print("Generate polygons")
-    polygons = []
-    for region_idx in tqdm(vor2.regions):
-        if len(region_idx) > 0 and -1 not in region_idx:
-            # Check if region is valid (not empty and doesn't contain -1 index)
-            # Extract vertices for the region
-            region_vertices = vor2.vertices[region_idx]
-            # Create a Shapely polygon from the vertices if it has at least 4 vertices
-            if len(region_vertices) >= 3:
-                polygon = Polygon(region_vertices)
-                polygons.append(polygon)
-            else:
-                # Region is infinite, find intersection points with image boundaries
-                region_points = []
-                for point_idx in region_idx:
-                    edge_points = vor2.ridge_vertices[point_idx]
-                    if -1 in edge_points:
-                        # Find intersection points with image boundaries
-                        edge_points = np.array([point for point in edge_points if point != -1])
-                        edge_coords = vor2.vertices[edge_points]
-                        for edge_coord in edge_coords:
-                            line = LineString([vor2.vertices[point_idx], edge_coord])
-                            intersections = line.intersection(Point([0, 0, 10, 10]))
-                            if intersections.geom_type == 'MultiPoint':
-                                region_points.extend([list(intersection.coords)[0] for intersection in intersections])
-                            elif intersections.geom_type == 'Point':
-                                region_points.append(list(intersections.coords))
-                # Create a Shapely polygon from the intersection points
-                if len(region_points) > 2:
-                    polygon = Polygon(region_points)
-                    polygons.append(polygon)
+    for region in regions:
+        p = Polygon(vertices[region])
+        polygons.add(p)
+        ax5.fill(*p.exterior.xy, alpha=0.4)
 
+    ax5.plot(points[:, 0], points[:, 1], 'ko')
+    ax5.set_xlim(0, 10)
+    ax5.set_ylim(0, 10)
 
-        voronoi_plot_2d(vor2, ax5, show_vertices=False, show_points=False, line_colors='red')
-        plt.show()
-        # Plot the polygons
-        for polygon in polygons:
-            ax5.plot(*polygon.exterior.xy, c='blue', lw=2, alpha=0.5)
-        fig2.savefig('images/polygons.png', bbox_inches='tight', pad_inches=0.1)
+    rect = patches.Rectangle((0, 0), SQUARE_SIZE, SQUARE_SIZE, linewidth=1, edgecolor='r', facecolor='none')
+    ax6.plot(points[:, 0], points[:, 1], 'ko')
+    ax6.add_patch(rect)
+    ax6.set_xlim(vor2.min_bound[0] - 0.1, vor2.max_bound[0] + 0.1)
+    ax6.set_ylim(vor2.min_bound[1] - 0.1, vor2.max_bound[1] + 0.1)
+    fig2.savefig('images/before_bounding.png', bbox_inches='tight', pad_inches=0.1)
+
+    mapsquare = shapely.geometry.box(0, 0, SQUARE_SIZE, SQUARE_SIZE)
+    maplist = [polygon for polygon in polygons if not mapsquare.intersects(polygon)]
+    mappoly = []
+    for polygon in maplist:
+        if not mapsquare.contains(polygon):
+                mappoly.append(mapsquare.intersection(polygon))
+
+        else:
+            mappoly.append(polygon)
+
+    fig3, (ax7, ax8) = plt.subplots(1, 2, figsize=(10, 10), squeeze="true")
+
+    axes_setup(ax7, "Voronoi Diagram with Polygon Shapes", SQUARE_SIZE)
+    axes_setup(ax8, "Polygon Shapes full view", SQUARE_SIZE)
+
+    # plot polygons
+    for polygon in mappoly:
+        ax7.plot(*polygon.exterior.xy, c='blue', lw=2, alpha=0.5)
+    ax7.plot(points[:, 0], points[:, 1], 'ko')
+
+    rect = patches.Rectangle((0, 0), SQUARE_SIZE, SQUARE_SIZE, linewidth=1, edgecolor='r', facecolor='none')
+    for polygon in mappoly:
+        ax8.plot(*polygon.exterior.xy, c='blue', lw=2, alpha=0.5)
+    ax8.add_patch(rect)
+    ax8.set_xlim(vor2.min_bound[0] - 0.1, vor2.max_bound[0] + 0.1)
+    ax8.set_ylim(vor2.min_bound[1] - 0.1, vor2.max_bound[1] + 0.1)
+    ax8.set_aspect('equal', 'box')
+
+    fig3.savefig('images/final_polygons.png', bbox_inches='tight', pad_inches=0.1)
 
 
 @click.command()
