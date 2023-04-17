@@ -53,14 +53,13 @@ SQUARE_SIZE = 10
 
 # Define the number of points to generate
 NUM_POINTS = 100
-
 polygons = set()
 centers = set()
 corners = set()
 edges = set()
 
-
 def delaney():
+
     print("Generating points")
     # Generate random points in the square
     points: ndarray = generate_numbers(NUM_POINTS, 2, SQUARE_SIZE)
@@ -131,13 +130,13 @@ def delaney():
 
     print("Save the figure of all 4 plots")
     # Save the figure
-    fig1.savefig('images/plot.png', bbox_inches='tight', pad_inches=0.1)
+    fig1.savefig('images/1_plot.png', bbox_inches='tight', pad_inches=0.1)
 
     print("Setup second figure and plots")
-    fig2, (ax5, ax6) = plt.subplots(1, 2, figsize=(10, 10), squeeze="true")
+    fig2, (ax5, ax6) = plt.subplots(1, 2, figsize=(20, 10), squeeze="true")
 
     axes_setup(ax5, "Voronoi Diagram with Polygon Shapes", SQUARE_SIZE)
-    axes_setup(ax5, "Polygon Shapes full view", SQUARE_SIZE)
+    axes_setup(ax6, "Polygon Shapes full view", SQUARE_SIZE)
 
     print("Making infinite voronoi regions finite")
     regions, vertices = voronoi_finite_polygons_2d(vor2)
@@ -147,6 +146,7 @@ def delaney():
         p = Polygon(vertices[region])
         polygons.add(p)
         ax5.fill(*p.exterior.xy, alpha=0.4)
+        ax6.fill(*p.exterior.xy, alpha=0.4)
 
     ax5.plot(points[:, 0], points[:, 1], 'ko')
     ax5.set_xlim(0, 10)
@@ -157,37 +157,39 @@ def delaney():
     ax6.add_patch(rect)
     ax6.set_xlim(vor2.min_bound[0] - 0.1, vor2.max_bound[0] + 0.1)
     ax6.set_ylim(vor2.min_bound[1] - 0.1, vor2.max_bound[1] + 0.1)
-    fig2.savefig('images/before_bounding.png', bbox_inches='tight', pad_inches=0.1)
+    fig2.savefig('images/2_before_bounding.png', bbox_inches='tight', pad_inches=0.1)
+
+    fig3, (ax7, ax8) = plt.subplots(1, 2, figsize=(20, 10), squeeze="true")
 
     mapsquare = shapely.geometry.box(0, 0, SQUARE_SIZE, SQUARE_SIZE)
-    maplist = [polygon for polygon in polygons if not mapsquare.intersects(polygon)]
-    mappoly = []
+    maplist = set([polygon for polygon in polygons if mapsquare.intersects(polygon)])
+    mappoly = set()
+
     for polygon in maplist:
-        if not mapsquare.contains(polygon):
-                mappoly.append(mapsquare.intersection(polygon))
+        mappoly.add(polygon.intersection(mapsquare))
 
-        else:
-            mappoly.append(polygon)
-
-    fig3, (ax7, ax8) = plt.subplots(1, 2, figsize=(10, 10), squeeze="true")
-
+    print(maplist)
+    print(mappoly)
+    print(mappoly.difference(polygons))
     axes_setup(ax7, "Voronoi Diagram with Polygon Shapes", SQUARE_SIZE)
     axes_setup(ax8, "Polygon Shapes full view", SQUARE_SIZE)
+    print("Generate polygons")
 
     # plot polygons
     for polygon in mappoly:
-        ax7.plot(*polygon.exterior.xy, c='blue', lw=2, alpha=0.5)
+        ax7.fill(*polygon.exterior.xy, alpha=0.4)
+        ax8.fill(*polygon.exterior.xy, alpha=0.4)
+
     ax7.plot(points[:, 0], points[:, 1], 'ko')
 
     rect = patches.Rectangle((0, 0), SQUARE_SIZE, SQUARE_SIZE, linewidth=1, edgecolor='r', facecolor='none')
-    for polygon in mappoly:
-        ax8.plot(*polygon.exterior.xy, c='blue', lw=2, alpha=0.5)
     ax8.add_patch(rect)
+    ax8.plot(points[:, 0], points[:, 1], 'ko')
+
     ax8.set_xlim(vor2.min_bound[0] - 0.1, vor2.max_bound[0] + 0.1)
     ax8.set_ylim(vor2.min_bound[1] - 0.1, vor2.max_bound[1] + 0.1)
-    ax8.set_aspect('equal', 'box')
 
-    fig3.savefig('images/final_polygons.png', bbox_inches='tight', pad_inches=0.1)
+    fig3.savefig('images/3_final_polygons.png', bbox_inches='tight', pad_inches=0.1)
 
 
 @click.command()
