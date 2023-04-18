@@ -14,12 +14,6 @@ from tqdm import tqdm
 
 from lib import generate_numbers, axes_setup, lloyds_relaxation, voronoi_finite_polygons_2d
 
-# Size of world
-SQUARE_SIZE = 10
-
-# Define the number of points to generate
-NUM_POINTS = 100
-
 
 ### Custom Classes ###
 
@@ -48,45 +42,36 @@ class Edge:
         self.v1 = v1
 
 
-# Size of world
-SQUARE_SIZE = 10
-
-# Define the number of points to generate
-NUM_POINTS = 100
 polygons = set()
 centers = set()
 corners = set()
 edges = set()
 
-def delaney():
+@click.command()
+@click.option('--num-points', '-p', default=100, help='Number of random points.', type=int)
+@click.option('--square-size', '-s', default=10, help='Size of world.', type=int)
+@click.option('--seed', help='Number of greetings.', type=int)
+def delaney(num_points, square_size, seed):
+    if seed:
+        np.random.seed(seed)
 
     print("Generating points")
-    # Generate random points in the square
-    points: ndarray = generate_numbers(NUM_POINTS, 2, SQUARE_SIZE)
+    points: ndarray = generate_numbers(num_points, 2, square_size)
 
     print("Generating colors")
-    # Generate random colors for each point
-    colors: ndarray = generate_numbers(NUM_POINTS, 3)
-    bounding_box = np.array([0., SQUARE_SIZE, 0., SQUARE_SIZE])
-    print("Creating plots")
-    # Create a figure with 3 subplots
-    pltp: tuple[plt.figure, tuple[tuple[plt.axes, plt.axes]]] = plt.subplots(2, 2, figsize=(10, 10), squeeze="true")
+    colors: ndarray = generate_numbers(num_points, 3)
 
-    fig1: plt.figure
-    topax: tuple[plt.axes, plt.axes]
-    botax: tuple[plt.axes, plt.axes]
-    ax1: plt.axes
-    ax2: plt.axes
-    ax3: plt.axes
-    ax4: plt.axes
+    print("Creating plots")
+    pltp = plt.subplots(2, 2, figsize=(10, 10), squeeze="true")
+
     fig1, (topax, botax) = pltp
     (ax1, ax2) = topax
     (ax3, ax4) = botax
 
-    axes_setup(ax1, "Initial Voronoi Diagram", SQUARE_SIZE)
-    axes_setup(ax2, "Voronoi Diagram After Lloyd's Relaxation", SQUARE_SIZE)
-    axes_setup(ax3, "Delaunay Triangulation After Lloyd's Relaxation", SQUARE_SIZE)
-    axes_setup(ax4, "Delaunay Triangulation and Voronoi Diagram", SQUARE_SIZE)
+    axes_setup(ax1, "Initial Voronoi Diagram", square_size)
+    axes_setup(ax2, "Voronoi Diagram After Lloyd's Relaxation", square_size)
+    axes_setup(ax3, "Delaunay Triangulation After Lloyd's Relaxation", square_size)
+    axes_setup(ax4, "Delaunay Triangulation and Voronoi Diagram", square_size)
 
     print("Plot initial Voronoi diagram")
     # Plot the initial Voronoi diagram
@@ -95,25 +80,31 @@ def delaney():
     for region in vor1.regions:
         if len(region) > 0 and -1 not in region:
             ax1.fill(vor1.vertices[region, 0], vor1.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
-    for i in range(NUM_POINTS):
+
+    for i in range(num_points):
         ax1.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
 
     print("Running Lloyd's Relaxation 2 iterations")
-    points = lloyds_relaxation(points)
+    points = lloyds_relaxation(points, 2)
 
     print("Plot new Voronoi diagram")
-    # Plot the Voronoi diagram after Lloyd's relaxation
     vor2 = Voronoi(points)
-
-    for region in vor2.regions:
+    region_map = {}
+    for point_idx, region in enumerate(vor2.regions):
+        region_map[point_idx] = region
         if len(region) > 0 and -1 not in region:
             ax2.fill(vor2.vertices[region, 0], vor2.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
-    for i in range(NUM_POINTS):
+
+    for i in range(num_points):
         ax2.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
 
     print("Plot Delaunay triangulation")
-    # Create a Delaunay triangulation
     tri = Delaunay(points)
+
+    adjacency_map = {}
+    for point_idx, point in enumerate(points):
+        adjacent_points_idx = tri.vertex_neighbor_vertices[1][tri.vertex_neighbor_vertices[0] == point_idx]
+        adjacency_map.setdefault(point_idx, []).append(adjacent_points_idx)
 
     # Plot the Delaunay triangulation after Lloyd's relaxation
     ax3.triplot(points[:, 0], points[:, 1], tri.simplices, color='b', linewidth=0.5)
@@ -125,18 +116,17 @@ def delaney():
             ax4.fill(vor2.vertices[region, 0], vor2.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
 
     ax4.triplot(points[:, 0], points[:, 1], tri.simplices, color='b', linewidth=0.5)
-    for i in range(NUM_POINTS):
+    for i in range(num_points):
         ax4.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
 
     print("Save the figure of all 4 plots")
-    # Save the figure
     fig1.savefig('images/1_plot.png', bbox_inches='tight', pad_inches=0.1)
 
     print("Setup second figure and plots")
     fig2, (ax5, ax6) = plt.subplots(1, 2, figsize=(20, 10), squeeze="true")
 
-    axes_setup(ax5, "Voronoi Diagram with Polygon Shapes", SQUARE_SIZE)
-    axes_setup(ax6, "Polygon Shapes full view", SQUARE_SIZE)
+    axes_setup(ax5, "Voronoi Diagram with Polygon Shapes", square_size)
+    axes_setup(ax6, "Polygon Shapes full view", square_size)
 
     print("Making infinite voronoi regions finite")
     regions, vertices = voronoi_finite_polygons_2d(vor2)
@@ -152,7 +142,7 @@ def delaney():
     ax5.set_xlim(0, 10)
     ax5.set_ylim(0, 10)
 
-    rect = patches.Rectangle((0, 0), SQUARE_SIZE, SQUARE_SIZE, linewidth=1, edgecolor='r', facecolor='none')
+    rect = patches.Rectangle((0, 0), square_size, square_size, linewidth=1, edgecolor='r', facecolor='none')
     ax6.plot(points[:, 0], points[:, 1], 'ko')
     ax6.add_patch(rect)
     ax6.set_xlim(vor2.min_bound[0] - 0.1, vor2.max_bound[0] + 0.1)
@@ -161,18 +151,21 @@ def delaney():
 
     fig3, (ax7, ax8) = plt.subplots(1, 2, figsize=(20, 10), squeeze="true")
 
-    mapsquare = shapely.geometry.box(0, 0, SQUARE_SIZE, SQUARE_SIZE)
-    maplist = set([polygon for polygon in polygons if mapsquare.intersects(polygon)])
-    mappoly = set()
+    mapsquare = shapely.geometry.box(0, 0, square_size, square_size)
+    maplist = [polygon for polygon in polygons if mapsquare.intersects(polygon)]
+    mappoly = []
+    relevant_points = []
+    points_list = [Point(x, y) for x, y in points]
 
     for polygon in maplist:
-        mappoly.add(polygon.intersection(mapsquare))
+        for point in points_list:
+            if point.intersects(polygon)
+                relevant_points.append(point)
 
-    print(maplist)
-    print(mappoly)
-    print(mappoly.difference(polygons))
-    axes_setup(ax7, "Voronoi Diagram with Polygon Shapes", SQUARE_SIZE)
-    axes_setup(ax8, "Polygon Shapes full view", SQUARE_SIZE)
+        mappoly.append(polygon.intersection(mapsquare))
+
+    axes_setup(ax7, "Voronoi Diagram with Polygon Shapes", square_size)
+    axes_setup(ax8, "Polygon Shapes full view", square_size)
     print("Generate polygons")
 
     # plot polygons
@@ -182,7 +175,7 @@ def delaney():
 
     ax7.plot(points[:, 0], points[:, 1], 'ko')
 
-    rect = patches.Rectangle((0, 0), SQUARE_SIZE, SQUARE_SIZE, linewidth=1, edgecolor='r', facecolor='none')
+    rect = patches.Rectangle((0, 0), square_size, square_size, linewidth=1, edgecolor='r', facecolor='none')
     ax8.add_patch(rect)
     ax8.plot(points[:, 0], points[:, 1], 'ko')
 
@@ -191,6 +184,11 @@ def delaney():
 
     fig3.savefig('images/3_final_polygons.png', bbox_inches='tight', pad_inches=0.1)
 
+    points_list = [Point(x, y) for x, y in points]
+
+
+    for point in points_list:
+        for polygon in polygons:
 
 @click.command()
 def run():

@@ -5,12 +5,10 @@ import numpy as np
 from scipy.spatial import Voronoi
 
 
-def generate_numbers(num_points: int, dimension: int, scale: float = 1.0, seed=None) -> np.ndarray:
+def generate_numbers(num_points: int, dimension: int, scale: float = 1.0) -> np.ndarray:
     """
     Generates random ND points within a square of a given size.
     """
-    if seed:
-        np.random.seed(seed)
     points = np.random.rand(num_points, dimension) * scale
     return points
 
