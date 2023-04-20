@@ -153,16 +153,18 @@ def delaney(num_points, square_size, seed):
 
     mapsquare = shapely.geometry.box(0, 0, square_size, square_size)
     maplist = [polygon for polygon in polygons if mapsquare.intersects(polygon)]
+    polygon_map = {}
     mappoly = []
     relevant_points = []
     points_list = [Point(x, y) for x, y in points]
 
     for polygon in maplist:
-        for point in points_list:
-            if point.intersects(polygon)
-                relevant_points.append(point)
-
+        for point_idx, point in enumerate(points_list):
+            if point.intersects(polygon):
+                relevant_points.append(point_idx)
+                polygon_map[point_idx] = polygon
         mappoly.append(polygon.intersection(mapsquare))
+
 
     axes_setup(ax7, "Voronoi Diagram with Polygon Shapes", square_size)
     axes_setup(ax8, "Polygon Shapes full view", square_size)
@@ -183,12 +185,9 @@ def delaney(num_points, square_size, seed):
     ax8.set_ylim(vor2.min_bound[1] - 0.1, vor2.max_bound[1] + 0.1)
 
     fig3.savefig('images/3_final_polygons.png', bbox_inches='tight', pad_inches=0.1)
-
-    points_list = [Point(x, y) for x, y in points]
-
-
-    for point in points_list:
-        for polygon in polygons:
+    adjacency_map
+    polygon_map
+    region_map
 
 @click.command()
 def run():
