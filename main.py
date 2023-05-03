@@ -1,3 +1,5 @@
+from pprint import pprint
+
 import click
 import numpy as np
 import matplotlib.pyplot as plt
@@ -102,10 +104,15 @@ def delaney(num_points, square_size, seed):
     tri = Delaunay(points)
 
     adjacency_map = {}
-    for point_idx, point in enumerate(points):
-        adjacent_points_idx = tri.vertex_neighbor_vertices[1][tri.vertex_neighbor_vertices[0] == point_idx]
-        adjacency_map.setdefault(point_idx, []).append(adjacent_points_idx)
+    print("Number of points in Delaunay triangulation:", tri.npoints)
+    print(tri.vertex_neighbor_vertices[1])
 
+    (indptr, indices) = tri.vertex_neighbor_vertices
+    for point_idx, point in enumerate(points):
+        adjacent_points_idx = indices[indptr[point_idx]:indptr[point_idx + 1]]
+        adjacency_map.setdefault(point_idx, []).append(list(adjacent_points_idx))
+    print("adjacency")
+    pprint(adjacency_map)
     # Plot the Delaunay triangulation after Lloyd's relaxation
     ax3.triplot(points[:, 0], points[:, 1], tri.simplices, color='b', linewidth=0.5)
     ax3.plot(points[:, 0], points[:, 1], 'o', color='r')
