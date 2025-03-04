@@ -41,6 +41,17 @@ def lloyds_relaxation(points: np.ndarray, num_iterations: int = 2) -> np.ndarray
 
 
 def axes_setup(ax: plt.Axes, title: str, scale: float):
+    """
+    Set up the axes with the given title and scale.
+
+    Parameters:
+    ax (plt.Axes): The matplotlib axes to set up.
+    title (str): The title of the plot.
+    scale (float): The scale for the x and y axis limits.
+
+    Returns:
+    None
+    """
     ax.set_xlim([0, scale])
     ax.set_ylim([0, scale])
     ax.set_title(title)

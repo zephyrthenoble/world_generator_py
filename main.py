@@ -54,12 +54,13 @@ edges = set()
 @click.option('--num-points', '-p', default=100, help='Number of random points.', type=int)
 @click.option('--square-size', '-s', default=10, help='Size of world.', type=int)
 @click.option('--seed', help='Number of greetings.', type=int)
-def delaney(num_points, square_size, seed):
+@click.option('--iters', help="Number Lloyd's Relaxation algorithm", default=2, type=int)
+def delaney(num_points, square_size, seed, iters):
     if seed:
         np.random.seed(seed)
 
     logger.info("Generating points")
-    points: ndarray = generate_numbers(num_points, 2, square_size)
+    sites: ndarray = generate_numbers(num_points, 2, square_size)
 
     logger.info("Generating colors")
     colors: ndarray = generate_numbers(num_points, 3)
@@ -71,6 +72,7 @@ def delaney(num_points, square_size, seed):
     (ax1, ax2) = topax
     (ax3, ax4) = botax
 
+    # Set up the axes for the plots
     axes_setup(ax1, "Initial Voronoi Diagram", square_size)
     axes_setup(ax2, "Voronoi Diagram After Lloyd's Relaxation", square_size)
     axes_setup(ax3, "Delaunay Triangulation After Lloyd's Relaxation", square_size)
@@ -78,57 +80,61 @@ def delaney(num_points, square_size, seed):
 
     logger.info("Plot initial Voronoi diagram")
     # Plot the initial Voronoi diagram
-    vor1 = Voronoi(points)
+    voronoi_initial = Voronoi(sites)
 
-    for region in vor1.regions:
+    # Plot the Voronoi regions
+    for region in voronoi_initial.regions:
+        # -1 is a point at infinity
         if len(region) > 0 and -1 not in region:
-            ax1.fill(vor1.vertices[region, 0], vor1.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
+            ax1.fill(voronoi_initial.vertices[region, 0], voronoi_initial.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
 
+    # Plot the points used to generate the regions
     for i in range(num_points):
-        ax1.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
+        ax1.plot(sites[i, 0], sites[i, 1], 'o', color=colors[i])
 
-    logger.info("Running Lloyd's Relaxation 2 iterations")
-    points = lloyds_relaxation(points, 2)
+
+    logger.info(f"Running Lloyd's Relaxation {iters} iterations")
+    relaxed_sites = lloyds_relaxation(sites, iters)
 
     logger.info("Plot new Voronoi diagram")
-    vor2 = Voronoi(points)
+    voronoi_relaxed = Voronoi(relaxed_sites)
     region_map = {}
-    for point_idx, region in enumerate(vor2.regions):
+    for point_idx, region in enumerate(voronoi_relaxed.regions):
         region_map[point_idx] = region
         if len(region) > 0 and -1 not in region:
-            ax2.fill(vor2.vertices[region, 0], vor2.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
+            ax2.fill(voronoi_relaxed.vertices[region, 0], voronoi_relaxed.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
 
     for i in range(num_points):
-        ax2.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
+        ax2.plot(relaxed_sites[i, 0],relaxed_sites[i, 1], 'o', color=colors[i])
 
     logger.info("Plot Delaunay triangulation")
-    tri = Delaunay(points)
+    tri = Delaunay(relaxed_sites)
 
     adjacency_map = {}
     logger.debug("Number of points in Delaunay triangulation:", tri.npoints)
-    logger.debug(tri.vertex_neighbor_vertices[1])
+    # logger.debug(tri.vertex_neighbor_vertices[1])
 
     (indptr, indices) = tri.vertex_neighbor_vertices
-    for point_idx, point in enumerate(points):
+    for point_idx, point in enumerate(relaxed_sites):
         adjacent_points_idx = indices[indptr[point_idx]:indptr[point_idx + 1]]
         adjacency_map.setdefault(point_idx, []).append(list(adjacent_points_idx))
-    logger.debug("adjacency")
-    logger.debug(adjacency_map)
+    # logger.debug("adjacency")
+    # logger.debug(adjacency_map)
     # Plot the Delaunay triangulation after Lloyd's relaxation
-    ax3.triplot(points[:, 0], points[:, 1], tri.simplices, color='b', linewidth=0.5)
-    ax3.plot(points[:, 0], points[:, 1], 'o', color='r')
+    ax3.triplot(relaxed_sites[:, 0],relaxed_sites[:, 1], tri.simplices, color='b', linewidth=0.5)
+    ax3.plot(relaxed_sites[:, 0],relaxed_sites[:, 1], 'o', color='r')
 
     logger.info("Plot overlay of Delaunay triangulation and Voronoi diagram")
-    for region in vor2.regions:
+    for region in voronoi_relaxed.regions:
         if len(region) > 0 and -1 not in region:
-            ax4.fill(vor2.vertices[region, 0], vor2.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
+            ax4.fill(voronoi_relaxed.vertices[region, 0], voronoi_relaxed.vertices[region, 1], edgecolor='k', linewidth=0.5, facecolor='none')
 
-    ax4.triplot(points[:, 0], points[:, 1], tri.simplices, color='b', linewidth=0.5)
+    ax4.triplot(relaxed_sites[:, 0],relaxed_sites[:, 1], tri.simplices, color='b', linewidth=0.5)
     for i in range(num_points):
-        ax4.plot(points[i, 0], points[i, 1], 'o', color=colors[i])
+        ax4.plot(relaxed_sites[i, 0],relaxed_sites[i, 1], 'o', color=colors[i])
 
     logger.info("Save the figure of all 4 plots")
-    fig1.savefig('images/1_plot.png', bbox_inches='tight', pad_inches=0.1)
+    fig1.savefig('images/1_full_voronoi.png', bbox_inches='tight', pad_inches=0.1)
 
     logger.info("Setup second figure and plots")
     fig2, (ax5, ax6) = plt.subplots(1, 2, figsize=(20, 10), squeeze="true")
@@ -137,7 +143,7 @@ def delaney(num_points, square_size, seed):
     axes_setup(ax6, "Polygon Shapes full view", square_size)
 
     logger.info("Making infinite voronoi regions finite")
-    regions, vertices = voronoi_finite_polygons_2d(vor2)
+    regions, vertices = voronoi_finite_polygons_2d(voronoi_relaxed)
 
     logger.info("Generate polygons")
     for region in regions:
@@ -146,15 +152,15 @@ def delaney(num_points, square_size, seed):
         ax5.fill(*p.exterior.xy, alpha=0.4)
         ax6.fill(*p.exterior.xy, alpha=0.4)
 
-    ax5.plot(points[:, 0], points[:, 1], 'ko')
+    ax5.plot(relaxed_sites[:, 0],relaxed_sites[:, 1], 'ko')
     ax5.set_xlim(0, 10)
     ax5.set_ylim(0, 10)
 
     rect = patches.Rectangle((0, 0), square_size, square_size, linewidth=1, edgecolor='r', facecolor='none')
-    ax6.plot(points[:, 0], points[:, 1], 'ko')
+    ax6.plot(relaxed_sites[:, 0],relaxed_sites[:, 1], 'ko')
     ax6.add_patch(rect)
-    ax6.set_xlim(vor2.min_bound[0] - 0.1, vor2.max_bound[0] + 0.1)
-    ax6.set_ylim(vor2.min_bound[1] - 0.1, vor2.max_bound[1] + 0.1)
+    ax6.set_xlim(voronoi_relaxed.min_bound[0] - 0.1, voronoi_relaxed.max_bound[0] + 0.1)
+    ax6.set_ylim(voronoi_relaxed.min_bound[1] - 0.1, voronoi_relaxed.max_bound[1] + 0.1)
     fig2.savefig('images/2_before_bounding.png', bbox_inches='tight', pad_inches=0.1)
 
     fig3, (ax7, ax8) = plt.subplots(1, 2, figsize=(20, 10), squeeze="true")
@@ -168,7 +174,7 @@ def delaney(num_points, square_size, seed):
     # points in mappoly polytongs
     relevant_points = []
 
-    points_list = [Point(x, y) for x, y in points]
+    points_list = [Point(x, y) for x, y in relaxed_sites]
 
     for polygon in maplist:
         for point_idx, point in enumerate(points_list):
@@ -187,14 +193,14 @@ def delaney(num_points, square_size, seed):
         ax7.fill(*polygon.exterior.xy, alpha=0.4)
         ax8.fill(*polygon.exterior.xy, alpha=0.4)
 
-    ax7.plot(points[:, 0], points[:, 1], 'ko')
+    ax7.plot(relaxed_sites[:, 0], relaxed_sites[:, 1], 'ko')
 
     rect = patches.Rectangle((0, 0), square_size, square_size, linewidth=1, edgecolor='r', facecolor='none')
     ax8.add_patch(rect)
-    ax8.plot(points[:, 0], points[:, 1], 'ko')
+    ax8.plot(relaxed_sites[:, 0],relaxed_sites[:, 1], 'ko')
 
-    ax8.set_xlim(vor2.min_bound[0] - 0.1, vor2.max_bound[0] + 0.1)
-    ax8.set_ylim(vor2.min_bound[1] - 0.1, vor2.max_bound[1] + 0.1)
+    ax8.set_xlim(voronoi_relaxed.min_bound[0] - 0.1, voronoi_relaxed.max_bound[0] + 0.1)
+    ax8.set_ylim(voronoi_relaxed.min_bound[1] - 0.1, voronoi_relaxed.max_bound[1] + 0.1)
 
     fig3.savefig('images/3_final_polygons.png', bbox_inches='tight', pad_inches=0.1)
 
@@ -215,19 +221,19 @@ def delaney(num_points, square_size, seed):
             dual_graph.setdefault(l, set()).add(k)
 
 
-    ax9.triplot(points[:, 0], points[:, 1], tri.simplices, color='b', linewidth=0.5)
-    ax9.plot(points[:, 0], points[:, 1], 'o', color='r')
-    for i, region in enumerate(vor2.regions):
+    ax9.triplot(relaxed_sites[:, 0],relaxed_sites[:, 1], tri.simplices, color='b', linewidth=0.5)
+    ax9.plot(relaxed_sites[:, 0],relaxed_sites[:, 1], 'o', color='r')
+    for i, region in enumerate(voronoi_relaxed.regions):
         if -1 not in region:
-            polygon = vor2.vertices[region]
+            polygon = voronoi_relaxed.vertices[region]
             ax9.fill(polygon[:, 0], polygon[:, 1], edgecolor='k', linewidth=0.5, facecolor='none')
 
 
     for i, simplex in enumerate(tri.simplices):
         for j in range(3):
             k, l = simplex[j], simplex[(j+1)%3]
-            ax10.plot([points[k, 0], points[l, 0]], [points[k, 1], points[l, 1]], 'k-', linewidth=0.5)
-    ax10.plot(points[:, 0], points[:, 1], 'o', color='r')
+            ax10.plot([relaxed_sites[k, 0],relaxed_sites[l, 0]], [relaxed_sites[k, 1],relaxed_sites[l, 1]], 'k-', linewidth=0.5)
+    ax10.plot(relaxed_sites[:, 0],relaxed_sites[:, 1], 'o', color='r')
 
     fig4.savefig('images/4_voronoi_triangulation.png', bbox_inches='tight', pad_inches=0.1)
 
