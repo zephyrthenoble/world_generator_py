@@ -66,7 +66,7 @@ def delaney(num_points, square_size, seed, iters):
     colors: ndarray = generate_numbers(num_points, 3)
 
     logger.info("Creating plots")
-    pltp = plt.subplots(2, 2, figsize=(10, 10), squeeze="true")
+    pltp = plt.subplots(2, 2, figsize=(square_size, square_size), squeeze="true")
 
     fig1, (topax, botax) = pltp
     (ax1, ax2) = topax
@@ -244,4 +244,4 @@ def run():
 
 
 if __name__ == '__main__':
-    run()
+    delaney()
