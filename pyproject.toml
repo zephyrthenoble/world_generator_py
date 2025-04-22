@@ -1,0 +1,16 @@
+[project]
+name = "world-generator-py"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13.2"
+dependencies = [
+    "click>=8.1.8",
+    "loguru>=0.7.3",
+    "matplotlib>=3.10.1",
+    "numpy>=2.2.4",
+    "pillow>=11.2.1",
+    "scipy>=1.15.2",
+    "shapely>=2.1.0",
+    "tqdm>=4.67.1",
+]
