@@ -57,28 +57,28 @@ class WorldMap:
         # points in mappoly polytongs
         self.relevant_points: list[int] = []
 
-        logger.debug("Generating points")
+        logger.info("Generating points")
         sites: ndarray = generate_numbers(self.num_points, 2, square_size)
 
-        logger.debug("Generating colors")
+        logger.info("Generating colors")
         self.colors: ndarray = generate_numbers(self.num_points, 3)
-        logger.debug("Initial Voronoi diagram")
+        logger.info("Initial Voronoi diagram")
         self.voronoi_initial = Voronoi(sites)
-        logger.debug("Lloyd's relaxation")
+        logger.info("Lloyd's relaxation")
         self.voronoi_relaxed = Voronoi(lloyds_relaxation(sites, iters))
-        logger.debug("Lloyd's relaxation Delaunay triangulation")
+        logger.info("Lloyd's relaxation Delaunay triangulation")
         self.delaunay_triangulation = Delaunay(self.voronoi_relaxed.points)
-        logger.debug("Lloyd's relaxation polygons")
+        logger.info("Lloyd's relaxation polygons")
         self.polygons = self.generate_polygons(self.voronoi_relaxed)
-        logger.debug("Lloyd's relaxation polygons")
+        logger.info("Lloyd's relaxation polygons")
         self.mapsquare = shapely.geometry.box(0, 0, square_size, square_size)
-        logger.debug("Polygons in map square")
+        logger.info("Polygons in map square")
         self.polygons_in_map = [
             polygon for polygon in self.polygons if self.mapsquare.intersects(polygon)
         ]
         self.points_list = [Point(x, y) for x, y in self.voronoi_relaxed.points]
 
-        logger.debug("Find points within polygons and cut polygons down to map square")
+        logger.info("Find points within polygons and cut polygons down to map square")
         for polygon in self.polygons_in_map:
             for point_idx, point in enumerate(self.points_list):
                 if point.intersects(polygon):
@@ -87,7 +87,7 @@ class WorldMap:
             self.mappoly.append(polygon.intersection(self.mapsquare))
 
         self.adjacency_map = {}
-        logger.debug(
+        logger.info(
             "Number of points in Delaunay triangulation:",
             self.delaunay_triangulation.npoints,
         )
@@ -167,7 +167,7 @@ class WorldMap:
         ) = plt.subplots(1, 2, figsize=(20, 10), squeeze="true")
 
 
-    def plot_everything(self) -> None:
+    def render_plots(self) -> None:
         logger.info("Initialize plots")
         self.initialize_plots()
         logger.info("Setup axes")
@@ -176,7 +176,9 @@ class WorldMap:
         self.populate_plots()
         logger.info("Save figures")
         self.save_figures()
-        logger.info("Show figures")
+
+    def show_plots(self) -> None:
+        logger.info("Show plots")
         plt.show()
 
     def populate_plots(self) -> None:

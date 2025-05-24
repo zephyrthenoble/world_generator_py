@@ -266,7 +266,8 @@ def run():
 def main():
     import lib
     map = lib.WorldMap()
-    map.plot_everything()
+    map.render_plots()
+    map.show_plots()
 
 if __name__ == '__main__':
     #delaney()
