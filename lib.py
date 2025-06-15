@@ -1,37 +1,25 @@
 from typing import List, Tuple
 from typing import Optional
+import random
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy import ndarray, intc
 from scipy.spatial import Voronoi
 from loguru import logger
-
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 import shapely.geometry
 from matplotlib import patches
-from numpy import ndarray
 from scipy.spatial import Delaunay
+import shapely
 from shapely import Point
 from shapely.geometry import Polygon
+from tqdm import tqdm
+
 
 
 class WorldMap:
-    def generate_polygons(self, vor: Voronoi) -> List[Polygon]:
-        regions, vertices = voronoi_finite_polygons_2d(vor)
-        polygons: List[Polygon] = []
-        for region in regions:
-            p = Polygon(vertices[region])
-            polygons.append(p)
-        return polygons
-
-    def draw_polygons(
-        self,
-        polygons: List[Polygon],
-        poly_axis: Axes,
-    ) -> None:
-        for p in polygons:
-            poly_axis.fill(*p.exterior.xy, alpha=0.4)
 
     def __init__(
         self,
@@ -44,24 +32,27 @@ class WorldMap:
         self.voronoi_triangulation_axis: Axes
         self.voronoi_triangulation_zoomed_in: Axes
 
+        self.seed = random.seed()
         if seed:
-            np.random.seed(seed)
+            self.seed = seed
+        logger.info(f"Setting random seed to {self.seed}")
+        self.rng = np.random.default_rng(seed=self.seed)
         self.num_points = num_points
         self.square_size = square_size
         self.iters = iters
 
         # point to polygon
-        self.polygon_map: dict[int, Polygon] = {}
+        self.point_to_polygon: dict[int, Polygon] = {}
         # only the portion of polygons in map square
-        self.mappoly: list[Polygon] = []
+        self.map_polygons: list[Polygon] = []
         # points in mappoly polytongs
         self.relevant_points: list[int] = []
 
         logger.info("Generating points")
-        sites: ndarray = generate_numbers(self.num_points, 2, square_size)
-
+        sites: ndarray = self.generate_numbers(self.num_points, 2, square_size)
         logger.info("Generating colors")
-        self.colors: ndarray = generate_numbers(self.num_points, 3)
+        self.colors: ndarray = self.generate_numbers(self.num_points, 3)
+
         logger.info("Initial Voronoi diagram")
         self.voronoi_initial = Voronoi(sites)
         logger.info("Lloyd's relaxation")
@@ -79,12 +70,13 @@ class WorldMap:
         self.points_list = [Point(x, y) for x, y in self.voronoi_relaxed.points]
 
         logger.info("Find points within polygons and cut polygons down to map square")
-        for polygon in self.polygons_in_map:
-            for point_idx, point in enumerate(self.points_list):
+        for polygon in tqdm(self.polygons_in_map):
+            for point_idx, point in tqdm(enumerate(self.points_list),leave=False):
                 if point.intersects(polygon):
                     self.relevant_points.append(point_idx)
-                    self.polygon_map[point_idx] = polygon
-            self.mappoly.append(polygon.intersection(self.mapsquare))
+                    self.point_to_polygon[point_idx] = polygon
+            map_intersection = shapely.intersection(polygon, self.mapsquare).normalize()
+            self.map_polygons.append(map_intersection)
 
         self.adjacency_map = {}
         logger.info(
@@ -93,7 +85,9 @@ class WorldMap:
         )
 
         (indptr, indices) = self.delaunay_triangulation.vertex_neighbor_vertices
-        for point_idx, point in enumerate(self.voronoi_relaxed.points):
+        # Here we determine what points are adjacent to each other
+        # We can use this along with a mapping of points to polygons to determine adjacent polygons
+        for point_idx, point in tqdm(enumerate(self.voronoi_relaxed.points)):
             adjacent_points_idx = indices[indptr[point_idx] : indptr[point_idx + 1]]
             self.adjacency_map.setdefault(point_idx, []).append(list(adjacent_points_idx))
 
@@ -106,31 +100,55 @@ class WorldMap:
             facecolor="none",
         )
 
+        # create a square that represents the map area
+        logger.debug("Creating map square")
         self.mapsquare = shapely.geometry.box(0, 0, self.square_size, self.square_size)
+
+        logger.debug("Finding polygons in map square")
         self.maplist = [
             polygon for polygon in self.polygons if self.mapsquare.intersects(polygon)
         ]
 
+        logger.debug("Finding points in map box")
         self.points_list = [Point(x, y) for x, y in self.voronoi_relaxed.points]
 
-        for polygon in self.maplist:
-            for point_idx, point in enumerate(self.points_list):
+        for polygon in tqdm(self.maplist):
+            for point_idx, point in tqdm(enumerate(self.points_list), leave=False):
                 if point.intersects(polygon):
                     self.relevant_points.append(point_idx)
-                    self.polygon_map[point_idx] = polygon
-            self.mappoly.append(polygon.intersection(self.mapsquare))
+                    self.point_to_polygon[point_idx] = polygon
+            self.map_polygons.append(polygon.intersection(self.mapsquare))
 
         # compute dual graph of Delaunay triangulation
-        self.dual_graph = {}
-        for simplex_index, simplex in enumerate(self.delaunay_triangulation.simplices):
-            for edge_index in range(3):
+        # this maps each 
+        self.dual_graph: dict[int, dict[int, int]] = {}
+        for simplex_index, simplex in tqdm(enumerate(self.delaunay_triangulation.simplices)):
+            simplex_index: int
+            simplex: ndarray[intc]
+            self.dual_graph[simplex_index] = {}
+            for edge_index in tqdm(range(3), leave=False):
                 start_edge, end_edge = (
                     simplex[edge_index],
                     simplex[(edge_index + 1) % 3],
                 )
-                self.dual_graph.setdefault(start_edge, set()).add(end_edge)
-                self.dual_graph.setdefault(end_edge, set()).add(start_edge)
+                self.dual_graph[simplex_index].setdefault(start_edge, set()).add(end_edge)
+                self.dual_graph[simplex_index].setdefault(end_edge, set()).add(start_edge)
 
+    def generate_polygons(self, vor: Voronoi) -> List[Polygon]:
+        regions, vertices = voronoi_finite_polygons_2d(vor)
+        polygons: List[Polygon] = []
+        for region in regions:
+            p = Polygon(vertices[region])
+            polygons.append(p)
+        return polygons
+
+    def draw_polygons(
+        self,
+        polygons: List[Polygon],
+        poly_axis: Axes,
+    ) -> None:
+        for p in polygons:
+            poly_axis.fill(*p.exterior.xy, alpha=0.4)
 
     def initialize_plots(self) -> None:
         logger.debug("Typing")
@@ -269,7 +287,7 @@ class WorldMap:
         )
 
         # plot polygons
-        for polygon in self.mappoly:
+        for polygon in self.map_polygons:
             self.polygon_shapes_axis.fill(*polygon.exterior.xy, alpha=0.4)
             self.polygon_before_bounding_full_view_axis.fill(
                 *polygon.exterior.xy, alpha=0.4
@@ -451,8 +469,8 @@ class WorldMap:
             scale = self.square_size
         if not aspects:
             aspects = ["equal", "box"]
-        ax.set_xlim([0, scale])
-        ax.set_ylim([0, scale])
+        ax.set_xlim((0, scale))
+        ax.set_ylim((0, scale))
         ax.set_title(title)
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
@@ -468,32 +486,33 @@ class WorldMap:
         self.initial_voronoi_axis, self.relaxed_voronoi_axis = topax
         self.relaxed_delaunay_axis, self.combined_voronoi_delaunay = botax
         # Set up the axes for the plots
-        axes_setup(
+        self.axes_setup(
             self.initial_voronoi_axis, "Initial Voronoi Diagram", self.square_size
         )
-        axes_setup(
+        self.axes_setup(
             self.relaxed_voronoi_axis,
             "Voronoi Diagram After Lloyd's Relaxation",
             self.square_size,
         )
-        axes_setup(
+        self.axes_setup(
             self.relaxed_delaunay_axis,
             "Delaunay Triangulation After Lloyd's Relaxation",
             self.square_size,
         )
-        axes_setup(
+        self.axes_setup(
             self.combined_voronoi_delaunay,
             "Delaunay Triangulation and Voronoi Diagram",
             self.square_size,
         )
 
 
-def generate_numbers(num_points: int, dimension: int, scale: float = 1.0) -> np.ndarray:
-    """
-    Generates random ND points within a square of a given size.
-    """
-    points = np.random.rand(num_points, dimension) * scale
-    return points
+    def generate_numbers(self, num_points: int, dimension: int,scale: float = 1.0,  size: Optional[tuple[int, int]] = None) -> np.ndarray:
+        """
+        Generates random ND points within a square of a given size.
+        """
+        if not size:
+            size= (num_points, dimension)
+        return self.rng.random(size=size) * scale
 
 
 def lloyds_relaxation(points: np.ndarray, num_iterations: int = 2) -> np.ndarray:
@@ -536,7 +555,7 @@ def axes_setup(
     ax.set_aspect(*aspects)
 
 
-def voronoi_finite_polygons_2d(vor, radius=None):
+def voronoi_finite_polygons_2d(vor: Voronoi, radius=None):
     """
     Reconstruct infinite voronoi regions in a 2D diagram to finite
     regions.
